@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom WGPU Widget</title>
+    <style>
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            min-width: 400px;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+        #canvas {
+            width: 100%;
+            height: auto; /* Maintain aspect ratio */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas" width="800" height="800"></canvas>
+    </div>
+    <script type="module">
+        import init, { App } from './pkg/wgpu_wasm.js';
+        async function run() {
+            await init();
+            console.log('wasm module inited');
+            const app = new App();
+            app.start();
+        }
+        run();
+    </script>
+</body>
+</html>
