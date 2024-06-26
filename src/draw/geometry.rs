@@ -1,14 +1,17 @@
 use std::borrow::Cow;
 use wgpu::{ColorTargetState, Device, Queue, RenderPipeline, TextureView};
-use crate::painter::painter::Painter;
+use crate::draw::document::Document;
+use crate::draw::mesh::Mesh;
+use crate::draw::painter::Painter;
 
 pub(crate) struct GeometryPainter {
+    pub(crate) document: Document,
+    mesh: Mesh,
     render_pipeline: RenderPipeline,
 }
 
 impl GeometryPainter {
     pub(crate) fn create(color: ColorTargetState, device: &Device) -> Self {
-        // Load the shaders from disk
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
@@ -41,7 +44,10 @@ impl GeometryPainter {
             multiview: None,
         });
 
-        Self { render_pipeline }
+        let document = Document::random(10000, 10000, 1000);
+        let mesh = document.mesh();
+
+        Self { document, mesh, render_pipeline }
     }
 }
 
@@ -60,7 +66,7 @@ impl Painter for GeometryPainter {
                         view: &view,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                             store: wgpu::StoreOp::Store,
                         },
                     })],

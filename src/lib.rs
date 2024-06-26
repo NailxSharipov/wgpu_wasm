@@ -1,2 +1,2 @@
 pub mod app;
-pub(crate) mod painter;
+pub(crate) mod draw;

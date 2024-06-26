@@ -2,8 +2,8 @@ use std::sync::Arc;
 use log::info;
 use wgpu::{Adapter, Device, Instance, Queue, Surface, SurfaceConfiguration};
 use winit::window::Window;
-use crate::painter::geometry::GeometryPainter;
-use crate::painter::painter::{Painter, PainterLibrary};
+use crate::draw::geometry::GeometryPainter;
+use crate::draw::painter::{Painter, PainterLibrary};
 
 pub(crate) struct GraphicContext {
     pub(crate) window: Arc<Window>,

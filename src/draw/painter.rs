@@ -1,5 +1,5 @@
 use wgpu::{Device, Queue, TextureView};
-use crate::painter::geometry::GeometryPainter;
+use crate::draw::geometry::GeometryPainter;
 
 pub(crate) trait Painter {
     fn draw(&self, queue: &Queue, device: &Device, view: &TextureView);
