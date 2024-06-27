@@ -4,3 +4,5 @@ mod document;
 mod point;
 mod rect;
 mod mesh;
+mod brush;
+mod color;

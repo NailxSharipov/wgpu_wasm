@@ -2,7 +2,7 @@ use wgpu::{Device, Queue, TextureView};
 use crate::draw::geometry::GeometryPainter;
 
 pub(crate) trait Painter {
-    fn draw(&self, queue: &Queue, device: &Device, view: &TextureView);
+    fn draw(&mut self, queue: &Queue, device: &Device, view: &TextureView);
 }
 
 pub(crate) enum PainterLibrary {
@@ -10,7 +10,7 @@ pub(crate) enum PainterLibrary {
 }
 
 impl Painter for PainterLibrary {
-    fn draw(&self, queue: &Queue, device: &Device, view: &TextureView) {
+    fn draw(&mut self, queue: &Queue, device: &Device, view: &TextureView) {
         match self {
             PainterLibrary::Geometry(painter) => {
                 painter.draw(queue, device, view)

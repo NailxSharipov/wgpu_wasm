@@ -25,11 +25,16 @@ impl GraphicContext {
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
 
-        let geometry_painter = GeometryPainter::create(swapchain_format.into(), &device);
-
         let mut size = win.inner_size();
         size.width = size.width.max(100);
         size.height = size.height.max(100);
+
+        let geometry_painter = GeometryPainter::create(
+            swapchain_format.into(),
+            &device,
+            size.width,
+            size.height
+        );
 
         let surface_config = surface
             .get_default_config(&adapter, size.width, size.height)
@@ -76,7 +81,7 @@ impl GraphicContext {
         (adapter, device, queue)
     }
 
-    pub(crate) fn draw(&self) {
+    pub(crate) fn draw(&mut self) {
         let frame = self.surface
             .get_current_texture()
             .expect("Failed to acquire next swap chain texture");
@@ -84,7 +89,7 @@ impl GraphicContext {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        self.painter_library.draw(&self.queue, &self.device, &view);
+        self.painter_library.draw(&mut self.queue, &self.device, &view);
 
         frame.present();
     }

@@ -1,61 +1,106 @@
 use rand::Rng;
-use wgpu::Color;
+use crate::draw::brush::MAX_BRUSHES;
 use crate::draw::mesh::Mesh;
+use crate::draw::point::Point;
 use crate::draw::rect::Rect;
 
 pub(crate) struct Document {
-    pub(crate) width: u32,
-    pub(crate) height: u32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) stroke: f32,
     pub(crate) rects: Vec<Rect>,
+    pub(crate) positions: Vec<Point>,
+    pub(crate) velocities: Vec<Point>,
+    pub(crate) mesh: Mesh,
+    pub(crate) active: usize
 }
 
 impl Document {
-    pub(crate) fn random(width: u32, height: u32, count: usize) -> Self {
+    pub(crate) fn random(width: u32, height: u32, stroke: f32, count: usize) -> Self {
         let mut rng = rand::thread_rng();
-        let mut rects = Vec::with_capacity(count);
 
-        let max_width = width / 16;
-        let max_height = height / 16;
+        let mut rects = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count);
+        let mut velocities = Vec::with_capacity(count);
+
+        let a = 32;
+
+        let max_width = width / a;
+        let max_height = height / a;
+        let min_width = max_width / 4;
+        let min_height = max_height / 4;
 
         let x_range = 0..(width - max_width);
         let y_range = 0..(height - max_height);
-        let w_range = 0..max_width;
-        let h_range = 0..max_height;
+        let w_range = min_width..max_width;
+        let h_range = min_height..max_height;
 
-        for _ in 0..count {
-            let x = rng.gen_range(&x_range);
-            let y = rng.gen_range(&y_range);
-            let w = rng.gen_range(&w_range);
-            let h = rng.gen_range(&h_range);
+        for i in 0..count {
+            let x = rng.gen_range(x_range.clone());
+            let y = rng.gen_range(y_range.clone());
 
-            let color = Color {
-                r: rng.gen(),
-                g: rng.gen(),
-                b: rng.gen(),
-                a: 1.0,
-            };
+            let vx = 0.1f32 * (rng.gen::<f32>() - 0.5f32);
+            let vy = 0.1f32 * (rng.gen::<f32>() - 0.5f32);
+
+            positions.push(Point { x: x as f32, y: y as f32 });
+            velocities.push(Point { x: vx, y: vy });
+
+            let w = rng.gen_range(w_range.clone());
+            let h = rng.gen_range(h_range.clone());
+
+            let brush = (i % MAX_BRUSHES) as u32;
 
             let rect = Rect {
-                x,
-                y,
                 width: w,
                 height: h,
-                color,
+                brush,
             };
 
             rects.push(rect);
         }
 
-        Self { width, height, rects }
-    }
+        let mut mesh = Mesh::with_capacity(4 * rects.len());
 
-    pub(crate) fn mesh(&self) -> Mesh {
-        let mut mesh = Mesh::with_capacity(4 * self.rects.len());
-
-        for rect in self.rects.iter() {
-            mesh.append(rect.mesh());
+        for (i, rect) in rects.iter().enumerate() {
+            mesh.append(rect.mesh(positions[i], stroke));
         }
 
-        mesh
+        Self {
+            width: width as f32,
+            height: height as f32,
+            stroke,
+            rects,
+            positions,
+            velocities,
+            mesh,
+            active: 0
+        }
+    }
+
+    pub(crate) fn update(&mut self) {
+        let dt = 50.0;
+        let s = self.stroke;
+        let a = 5;
+        let mut i = self.active % a;
+        while i < self.rects.len() {
+            let rect = &self.rects[i];
+            let mut pos = self.positions[i];
+            let mut vel = self.velocities[i];
+            if pos.x > self.width && vel.x > 0.0 || pos.x < 0.0 && vel.x < 0.0 {
+                vel.x = -vel.x;
+            }
+            if pos.y > self.height && vel.y > 0.0 || pos.y < 0.0 && vel.y < 0.0 {
+                vel.y = -vel.y;
+            }
+
+            pos.x += vel.x * dt;
+            pos.y += vel.y * dt;
+            self.positions[i] = pos;
+            self.velocities[i] = vel;
+
+            rect.update(pos, s, i, &mut self.mesh);
+
+            i += a;
+        }
     }
 }
