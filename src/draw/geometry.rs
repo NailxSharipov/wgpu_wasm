@@ -1,11 +1,21 @@
 use std::borrow::Cow;
-use wgpu::{Buffer, BufferUsages, ColorTargetState, Device, Queue, RenderPipeline, TextureView, util::DeviceExt, BindGroup, BufferBindingType, ShaderStages};
+use wgpu::{Buffer, BufferUsages, ColorTargetState, Device, Queue, RenderPipeline, TextureView, util::DeviceExt, BindGroup, BufferBindingType, ShaderStages, BufferAddress, BindGroupLayout};
 use crate::draw::brush::Brush;
 use crate::draw::document::Document;
 use crate::draw::painter::Painter;
+use crate::draw::point::Point;
+
+struct Screen {
+    width: f32,
+    height: f32,
+    pos: Point,
+    scale: f32,
+    is_modified: bool,
+}
 
 pub(crate) struct GeometryPainter {
-    document: Document,
+    pub(crate) document: Document,
+    screen: Screen,
     render_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
     brush_buffer: Buffer,
@@ -16,34 +26,43 @@ pub(crate) struct GeometryPainter {
 
 impl GeometryPainter {
     pub(crate) fn create(color: ColorTargetState, device: &Device, screen_width: u32, screen_height: u32) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
-        });
+        let document = Document::random(1000, 1000, 1.0, 1_00);
 
-        let document = Document::random(1000, 1000, 1.0, 100_000);
-        let mesh = &document.mesh;
+        let width = screen_width as f32;
+        let height = screen_height as f32;
+
+        let screen = Screen {
+            width,
+            height,
+            pos: Point { x: 0.5 * width, y: 0.5 * height },
+            scale: 1.0,
+            is_modified: true,
+        };
 
         // Create GPU buffers
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&mesh.points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()),
+            contents: bytemuck::cast_slice(&document.mesh.points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
 
         let brush_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Brush Buffer"),
-            contents: bytemuck::cast_slice(&mesh.brushes),
+            contents: bytemuck::cast_slice(&document.mesh.brushes),
             usage: BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&mesh.indices),
+            contents: bytemuck::cast_slice(&document.mesh.indices),
             usage: BufferUsages::INDEX,
         });
 
-        let ortho_matrix = create_orthographic_matrix(screen_width as f32, screen_height as f32, document.width as f32, document.height as f32);
+        let ortho_matrix = create_orthographic_matrix_with_camera(
+            &screen,
+            document.width,
+            document.height,
+        );
         let transform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Transform Buffer"),
             contents: bytemuck::cast_slice(&ortho_matrix),
@@ -110,6 +129,18 @@ impl GeometryPainter {
             ],
         });
 
+        let render_pipeline = Self::build_pipeline(color, device, bind_group_layout);
+
+        Self { document, screen, render_pipeline, vertex_buffer, brush_buffer, index_buffer, transform_buffer, bind_group }
+    }
+
+
+    fn build_pipeline(color: ColorTargetState, device: &Device, bind_group_layout: BindGroupLayout) -> RenderPipeline {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[&bind_group_layout],
@@ -122,7 +153,7 @@ impl GeometryPainter {
             write_mask: wgpu::ColorWrites::ALL,
         };
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -131,7 +162,7 @@ impl GeometryPainter {
                 compilation_options: Default::default(),
                 buffers: &[
                     wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                        array_stride: std::mem::size_of::<[f32; 2]>() as BufferAddress,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &[
                             wgpu::VertexAttribute {
@@ -142,7 +173,7 @@ impl GeometryPainter {
                         ],
                     },
                     wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<u32>() as wgpu::BufferAddress,
+                        array_stride: std::mem::size_of::<u32>() as BufferAddress,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &[
                             wgpu::VertexAttribute {
@@ -159,14 +190,25 @@ impl GeometryPainter {
                 entry_point: "fs_main",
                 compilation_options: Default::default(),
                 targets: &[Some(color_target_state)],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
 
-        Self { document, render_pipeline, vertex_buffer, brush_buffer, index_buffer, transform_buffer, bind_group }
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Cw,
+                cull_mode: Some(wgpu::Face::Front),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        })
     }
 
     fn update_vertex_buffer(&self, device: &Device, queue: &Queue) {
@@ -196,12 +238,46 @@ impl GeometryPainter {
         // Submit the command buffer
         queue.submit(Some(encoder.finish()));
     }
+
+    fn update_transform_buffer(&mut self, device: &Device, queue: &Queue) {
+        if !self.screen.is_modified {
+            return;
+        }
+        self.screen.is_modified = false;
+
+        let ortho_matrix = create_orthographic_matrix_with_camera(
+            &self.screen,
+            self.document.width,
+            self.document.height,
+        );
+
+        let staging_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Staging Buffer"),
+            contents: bytemuck::cast_slice(&ortho_matrix),
+            usage: BufferUsages::MAP_WRITE | BufferUsages::COPY_SRC,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Update Transform Buffer Encoder"),
+        });
+
+        encoder.copy_buffer_to_buffer(
+            &staging_buffer,
+            0,
+            &self.transform_buffer,
+            0,
+            std::mem::size_of::<[f32; 16]>() as BufferAddress,
+        );
+
+        queue.submit(Some(encoder.finish()));
+    }
 }
 
 impl Painter for GeometryPainter {
     fn draw(&mut self, queue: &Queue, device: &Device, view: &TextureView) {
         self.document.update();
         self.update_vertex_buffer(device, queue);
+        self.update_transform_buffer(device, queue);
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
@@ -232,17 +308,37 @@ impl Painter for GeometryPainter {
 
         queue.submit(Some(encoder.finish()));
     }
+
+    fn update_size(&mut self, screen_width: u32, screen_height: u32) {
+        self.screen.width = screen_width as f32;
+        self.screen.height = screen_height as f32;
+        self.screen.is_modified = true;
+    }
+
+    fn update_scale(&mut self, scale: f32) {
+        self.screen.scale = scale;
+        self.screen.is_modified = true;
+    }
+
+    fn update_pos(&mut self, pos: Point) {
+        self.screen.pos = pos;
+        self.screen.is_modified = true;
+    }
 }
 
-// Function to create an orthographic projection matrix
-fn create_orthographic_matrix(screen_width: f32, screen_height: f32, doc_width: f32, doc_height: f32) -> [f32; 16] {
+fn create_orthographic_matrix_with_camera(
+    screen: &Screen,
+    doc_width: f32,
+    doc_height: f32,
+) -> [f32; 16] {
     let aspect_ratio = doc_width / doc_height;
-    let scaled_width = screen_height * aspect_ratio;
+    let scaled_width = screen.height * aspect_ratio / screen.scale;
+    let scaled_height = screen.height / screen.scale;
 
-    let right = scaled_width;
-    let left = 0.0;
-    let top = 0.0;
-    let bottom = screen_height;
+    let right = screen.pos.x + scaled_width * 0.5;
+    let left = screen.pos.x - scaled_width * 0.5;
+    let top = screen.pos.y - scaled_height * 0.5;
+    let bottom = screen.pos.y + scaled_height * 0.5;
 
     [
         2.0 / (right - left), 0.0, 0.0, 0.0,
@@ -250,4 +346,19 @@ fn create_orthographic_matrix(screen_width: f32, screen_height: f32, doc_width: 
         0.0, 0.0, -1.0, 0.0,
         -(right + left) / (right - left), -(top + bottom) / (top - bottom), 0.0, 1.0,
     ]
+
+    // let aspect_ratio = doc_width / doc_height;
+    // let scaled_width = screen.height * aspect_ratio;
+    //
+    // let right = scaled_width;
+    // let left = 0.0;
+    // let top = 0.0;
+    // let bottom = screen.height;
+    //
+    // [
+    //     2.0 / (right - left), 0.0, 0.0, 0.0,
+    //     0.0, 2.0 / (top - bottom), 0.0, 0.0,
+    //     0.0, 0.0, -1.0, 0.0,
+    //     -(right + left) / (right - left), -(top + bottom) / (top - bottom), 0.0, 1.0,
+    // ]
 }

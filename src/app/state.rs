@@ -5,6 +5,8 @@ use winit::event::{DeviceEvent, DeviceId, KeyEvent, MouseScrollDelta, TouchPhase
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 use crate::app::graphic::GraphicContext;
+use crate::draw::painter::{Painter, PainterLibrary};
+use crate::draw::point::Point;
 
 pub struct AppState {
     context: Arc<Mutex<Context>>,
@@ -13,6 +15,26 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         AppState { context: Arc::new(Mutex::from(Context { state: ContextState::None, graphic: None, counter: 0 })) }
+    }
+
+    pub (crate) fn update_count(&mut self, count: usize) {
+        if let Ok(context) = &mut self.context.lock() {
+            if let Some(graphic) = &mut context.graphic {
+                match &mut graphic.painter_library {
+                    PainterLibrary::Geometry(painter) => {
+                        painter.document.update_count(count);
+                    }
+                }
+            }
+        }
+    }
+
+    pub (crate) fn update_pos(&mut self, pos: Point) {
+        if let Ok(context) = &mut self.context.lock() {
+            if let Some(graphic) = &mut context.graphic {
+                graphic.painter_library.update_pos(pos);
+            }
+        }
     }
 }
 

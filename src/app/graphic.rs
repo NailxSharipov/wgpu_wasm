@@ -95,12 +95,14 @@ impl GraphicContext {
     }
 
     pub(crate) fn resize(&mut self, width: u32, height: u32) {
-        self.surface_config.width = width.clamp(100, 1600);
-        self.surface_config.height = height.clamp(100, 1600);
+        self.surface_config.width = width.clamp(100, 5_000);
+        self.surface_config.height = height.clamp(100, 5_000);
 
         info!("w: {}, h: {}", width, height);
 
         self.surface.configure(&self.device, &self.surface_config);
+
+        self.painter_library.update_size(width, height);
 
         // On macos the window needs to be redrawn manually after resizing
         self.window.request_redraw();

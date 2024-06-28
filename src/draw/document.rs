@@ -1,4 +1,5 @@
 use rand::Rng;
+use tracing::info;
 use crate::draw::brush::MAX_BRUSHES;
 use crate::draw::mesh::Mesh;
 use crate::draw::point::Point;
@@ -12,7 +13,9 @@ pub(crate) struct Document {
     pub(crate) positions: Vec<Point>,
     pub(crate) velocities: Vec<Point>,
     pub(crate) mesh: Mesh,
-    pub(crate) active: usize
+    pub(crate) active: usize,
+    pub(crate) new_count: usize,
+    pub(crate) count: usize
 }
 
 impl Document {
@@ -73,14 +76,16 @@ impl Document {
             positions,
             velocities,
             mesh,
-            active: 0
+            active: 0,
+            new_count: count,
+            count,
         }
     }
 
     pub(crate) fn update(&mut self) {
         let dt = 50.0;
         let s = self.stroke;
-        let a = 5;
+        let a = 1;
         let mut i = self.active % a;
         while i < self.rects.len() {
             let rect = &self.rects[i];
@@ -102,5 +107,10 @@ impl Document {
 
             i += a;
         }
+    }
+
+    pub (crate) fn update_count(&mut self, count: usize) {
+        self.new_count = count;
+        info!("count {}", count);
     }
 }

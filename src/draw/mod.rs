@@ -1,7 +1,7 @@
 pub(crate) mod painter;
 pub(crate) mod geometry;
 mod document;
-mod point;
+pub(crate) mod point;
 mod rect;
 mod mesh;
 mod brush;

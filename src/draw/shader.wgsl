@@ -1,11 +1,11 @@
 struct VertexInput {
     @location(0) position: vec2<f32>,
-    @location(1) brush_index: u32,
+    @location(1) @interpolate(flat) brush_index: u32,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) brush_index: u32,
+    @location(0) @interpolate(flat) brush_index: u32,
     @location(1) frag_position: vec2<f32>,
 };
 
@@ -17,7 +17,7 @@ struct Brush {
     g: f32,
     b: f32,
     a: f32,
-    b: f32,
+    f: f32
 };
 
 @group(0) @binding(0)
